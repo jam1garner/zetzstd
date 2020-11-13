@@ -1,0 +1,28 @@
+using log;
+using <stdio.h>::{fopen, fread, FILE};
+
+const void* NULL = 0;
+
+export fn parse_zstd(FILE mut* f) where f != NULL {
+    u32 mut magic;
+    fread(&magic, sizeof(u32), 1, f);
+
+    if magic == 4247762216 {
+        log::info("Valid magic");
+    } else {
+        log::error("Invalid magic");
+    }
+}
+
+export fn main() int {
+    FILE mut* x = fopen("test.zstd", "rb");
+    if x != NULL {
+        unsafe {
+            parse_zstd(x);
+        }
+    } else {
+        log::warn("test.zstd not found");
+    }
+    
+    return 0;
+}
