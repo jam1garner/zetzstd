@@ -4,7 +4,7 @@ name = "zetzstd"
 cincludes = []
 cobjects = []
 pkgconfig = []
-cflags = ["-fsanitize=address"]
+cflags = ["-fsanitize=address", "-Wno-duplicate-decl-specifier"]
 
 [dependencies]
 log = "1"

@@ -1,17 +1,74 @@
 using log;
+using byteorder;
 using <stdio.h>::{fopen, fread, FILE};
 
 const void* NULL = 0;
 
-export fn parse_zstd(FILE mut* f) where f != NULL {
-    u32 mut magic;
-    fread(&magic, sizeof(u32), 1, f);
+inline fn read_u32(FILE mut* f) u32 where f != NULL {
+    u32 mut val;
+    fread(&val, sizeof(u32), 1, f);
+    return val;
+}
 
-    if magic == 4247762216 {
+inline fn read_u8(FILE mut* f) u8 where f != NULL {
+    u8 mut val;
+    fread(&val, sizeof(u8), 1, f);
+    return val;
+}
+
+inline fn frame_content_size_shift(u8 desc) u8 {
+    return ((desc >> 6) & 0b11);
+}
+
+inline fn single_segment_flag(u8 desc) u8
+    model return == 0 || return == 1
+{
+    return (desc >> 5) & 1; 
+}
+
+
+// Bitmask for keeping the 1 bit if single_segment_flag == 1 or clearing it otherwise
+// val   ssf
+// 1 [op] 1 => 1 (generates mask ~0)
+// 1 [op] 0 => 0 (generates mask ~1)
+// 2 [op] 0 => 2 (generates mask ~0)
+// 2 [op] 1 => 2 (generates mask ~1)
+inline fn single_seg_mask(u8 desc) u8 {
+    return ~(1 - single_segment_flag(desc));
+}
+
+inline fn frame_content_size(u8 desc) u8 {
+    return (1 << frame_content_size_shift(desc)) & single_seg_mask(desc);
+}
+
+inline fn content_checksum_flag(u8 desc) bool {
+    return (bool) ((desc >> 2) & 1);
+}
+
+inline fn dictionary_id_flag(u8 desc) u8
+    model return >= 0b00 && return <= 0b11
+{
+    return desc & 0b11;
+}
+
+export fn parse_zstd(FILE mut* f) 
+    where f != NULL
+{
+    u32 magic = read_u32(f);
+
+    if magic == 0xfd2fb528 {
         log::info("Valid magic");
     } else {
         log::error("Invalid magic");
+        return;
     }
+
+    u8 frame_header_desc = read_u8(f);
+    log::info("header_desc: %i", frame_header_desc);
+    log::info("frame_content_size: %i", frame_content_size(frame_header_desc));
+    log::info("single_segment_flag: %i", single_segment_flag(frame_header_desc));
+    log::info("content_checksum_flag: %i", content_checksum_flag(frame_header_desc));
+    log::info("dict_id_flag: %i", dictionary_id_flag(frame_header_desc));
 }
 
 export fn main() int {
@@ -23,6 +80,6 @@ export fn main() int {
     } else {
         log::warn("test.zstd not found");
     }
-    
+
     return 0;
 }
