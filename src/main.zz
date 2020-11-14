@@ -4,26 +4,40 @@ using <stdio.h>::{fopen, fread, FILE};
 
 const void* NULL = 0;
 
+inline fn read_u64(FILE mut* f) u64 where f != NULL {
+    u64 mut val;
+    fread(&val, sizeof(u64), 1, f);
+    return val;
+}
+
 inline fn read_u32(FILE mut* f) u32 where f != NULL {
     u32 mut val;
     fread(&val, sizeof(u32), 1, f);
     return val;
 }
 
-inline fn read_u8(FILE mut* f) u8 where f != NULL {
-    u8 mut val;
-    fread(&val, sizeof(u8), 1, f);
+inline fn read_u16(FILE mut* f) u16 where f != NULL {
+    u16 mut val;
+    fread(&val, sizeof(u16), 1, f);
     return val;
 }
 
-inline fn frame_content_size_shift(u8 desc) u8 {
-    return ((desc >> 6) & 0b11);
+inline fn read_u8(FILE mut* f) u8
+    where f != NULL
+{
+    u8 mut val;
+    fread(&val, sizeof(u8), 1, f);
+    return val;
 }
 
 inline fn single_segment_flag(u8 desc) u8
     model return == 0 || return == 1
 {
     return (desc >> 5) & 1; 
+}
+
+inline fn reserved_bit(u8 desc) bool {
+    return (bool)((desc >> 3) & 1);
 }
 
 
@@ -37,7 +51,11 @@ inline fn single_seg_mask(u8 desc) u8 {
     return ~(1 - single_segment_flag(desc));
 }
 
-inline fn frame_content_size(u8 desc) u8 {
+inline fn frame_content_size_shift(u8 desc) u8 {
+    return ((desc >> 6) & 0b11);
+}
+
+inline fn frame_content_size_size(u8 desc) u8 {
     return (1 << frame_content_size_shift(desc)) & single_seg_mask(desc);
 }
 
@@ -49,6 +67,16 @@ inline fn dictionary_id_flag(u8 desc) u8
     model return >= 0b00 && return <= 0b11
 {
     return desc & 0b11;
+}
+
+static u8 DICT_SIZES[4] = { 0, 1, 2, 4 };
+
+inline fn dictionary_id_size(u8 desc) u8 {
+    return DICT_SIZES[(usize)dictionary_id_flag(desc)];
+}
+
+inline fn should_parse_window_descriptor(u8 desc) bool {
+    return !(bool)single_segment_flag(desc);
 }
 
 export fn parse_zstd(FILE mut* f) 
@@ -65,10 +93,42 @@ export fn parse_zstd(FILE mut* f)
 
     u8 frame_header_desc = read_u8(f);
     log::info("header_desc: %i", frame_header_desc);
-    log::info("frame_content_size: %i", frame_content_size(frame_header_desc));
+    log::info("frame_content_size field size: %i", frame_content_size_size(frame_header_desc));
     log::info("single_segment_flag: %i", single_segment_flag(frame_header_desc));
     log::info("content_checksum_flag: %i", content_checksum_flag(frame_header_desc));
-    log::info("dict_id_flag: %i", dictionary_id_flag(frame_header_desc));
+    log::info("dict_id_size: %i", dictionary_id_size(frame_header_desc));
+    log::info("reserved_bit: %i", reserved_bit(frame_header_desc));
+    
+    if reserved_bit(frame_header_desc) {
+        log::error("Invalid header, reserved bit is set.");
+    }
+
+    if should_parse_window_descriptor(frame_header_desc) {
+        // TODO
+    }
+
+    usize mut decompressed_size;
+    switch frame_content_size_size(frame_header_desc) {
+        0 => {
+            // Unknown
+            // TODO
+            decompressed_size = 0;
+        }
+        1 => {
+            decompressed_size = (usize)read_u8(f);
+        }
+        2 => {
+            decompressed_size = (usize)read_u16(f) + 256;
+        }
+        4 => {
+            decompressed_size = (usize)read_u32(f);
+        }
+        8 => {
+            decompressed_size = (usize)read_u64(f);
+        }
+    }
+
+    log::info("decompressed_size: %i", decompressed_size);
 }
 
 export fn main() int {
